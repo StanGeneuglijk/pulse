@@ -1,0 +1,69 @@
+services:
+  - type: web
+    name: whoop-platform-api
+    runtime: docker
+    rootDir: whoop-service
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    # Same region as the Supabase project (eu-central-1): every request opens
+    # fresh DB connections (NullPool), so cross-region RTT multiplies fast —
+    # from oregon, whoop-service's /health blew past Render's 5s check.
+    region: frankfurt
+    plan: free
+    healthCheckPath: /health
+    # Runs before traffic is routed to the new instance — see alembic/env.py.
+    # No `uv run` prefix: this executes inside the deployed runtime image,
+    # which only has the built venv on PATH (/app/.venv/bin), never the uv
+    # binary itself — same reasoning as dockerCommand below.
+    preDeployCommand: alembic upgrade head
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_URL_DIRECT
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: WHOOP_CLIENT_ID
+        sync: false
+      - key: WHOOP_CLIENT_SECRET
+        sync: false
+      - key: WHOOP_REDIRECT_URI
+        value: https://whoop-platform-api.onrender.com/auth/callback
+      - key: TOKEN_ENCRYPTION_KEY
+        sync: false
+      - key: API_KEY
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+    dockerCommand: uvicorn api.main:app --host 0.0.0.0 --port $PORT
+
+  - type: worker
+    name: whoop-platform-worker
+    runtime: docker
+    rootDir: whoop-service
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    # Same region as the Supabase project (eu-central-1): every request opens
+    # fresh DB connections (NullPool), so cross-region RTT multiplies fast —
+    # from oregon, whoop-service's /health blew past Render's 5s check.
+    region: frankfurt
+    plan: starter
+    numInstances: 1          # single-user scale; raise this knob to sync more users concurrently
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: WHOOP_CLIENT_ID
+        sync: false
+      - key: WHOOP_CLIENT_SECRET
+        sync: false
+      - key: WHOOP_REDIRECT_URI
+        value: https://whoop-platform-api.onrender.com/auth/callback
+      - key: TOKEN_ENCRYPTION_KEY
+        sync: false
+      - key: API_KEY
+        sync: false
+      - key: WHOOP_FETCH_CONCURRENCY
+        value: "3"
+    dockerCommand: python -m workers.run

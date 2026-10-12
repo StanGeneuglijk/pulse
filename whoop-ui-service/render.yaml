@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: whoop-ui
+    runtime: node
+    # Blueprint lives at whoop-ui-service/render.yaml, so build from here,
+    # not the repo root — same per-service isolation the three backends use.
+    rootDir: whoop-ui-service
+    # Same region as the Supabase project (eu-central-1): every request opens
+    # fresh DB connections (NullPool), so cross-region RTT multiplies fast —
+    # from oregon, whoop-service's /health blew past Render's 5s check.
+    region: frankfurt
+    plan: free
+    buildCommand: npm ci && npm run build
+    # `next start` binds to $PORT on its own.
+    startCommand: npm start
+    # Not /api/health: that fans out to all three backends, which on the
+    # free plan can each take ~40s to wake — long enough to fail Render's
+    # health check and roll back an otherwise-fine deploy. /login renders
+    # with no backend call at all.
+    healthCheckPath: /login
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: WHOOP_SERVICE_URL
+        value: https://whoop-platform-api.onrender.com
+      - key: INSIGHT_SERVICE_URL
+        value: https://whoop-insight-platform-api.onrender.com
+      - key: NUTRITION_SERVICE_URL
+        value: https://whoop-nutrition-api.onrender.com
